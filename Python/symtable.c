@@ -1822,6 +1822,11 @@ symtable_visit_stmt(struct symtable *st, stmt_ty s)
         }
         break;
     }
+    case Immut_kind: {
+        // TODO: Implement
+        printf("Immut_kind not implemented, so there's no its entry in the symtable.\n");
+        break;
+    }
     case Expr_kind:
         VISIT(st, expr, s->v.Expr.value);
         break;

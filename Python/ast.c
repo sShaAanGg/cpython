@@ -924,6 +924,9 @@ validate_stmt(struct validator *state, stmt_ty stmt)
     case Nonlocal_kind:
         ret = validate_nonempty_seq(stmt->v.Nonlocal.names, "names", "Nonlocal");
         break;
+    case Immut_kind:
+        ret = validate_nonempty_seq(stmt->v.Immut.names, "names", "Immut");
+        break;
     case Expr_kind:
         ret = validate_expr(state, stmt->v.Expr.value, Load);
         break;

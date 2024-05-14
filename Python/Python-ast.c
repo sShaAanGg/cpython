@@ -86,6 +86,7 @@ void _PyAST_Fini(PyInterpreterState *interp)
     Py_CLEAR(state->Gt_type);
     Py_CLEAR(state->IfExp_type);
     Py_CLEAR(state->If_type);
+    Py_CLEAR(state->Immut_type);
     Py_CLEAR(state->ImportFrom_type);
     Py_CLEAR(state->Import_type);
     Py_CLEAR(state->In_singleton);
@@ -537,6 +538,9 @@ static const char * const Global_fields[]={
     "names",
 };
 static const char * const Nonlocal_fields[]={
+    "names",
+};
+static const char * const Immut_fields[]={
     "names",
 };
 static const char * const Expr_fields[]={
@@ -1218,6 +1222,7 @@ init_types(struct ast_state *state)
         "     | ImportFrom(identifier? module, alias* names, int? level)\n"
         "     | Global(identifier* names)\n"
         "     | Nonlocal(identifier* names)\n"
+        "     | Immut(identifier* names)\n"
         "     | Expr(expr value)\n"
         "     | Pass\n"
         "     | Break\n"
@@ -1362,6 +1367,10 @@ init_types(struct ast_state *state)
                                      Nonlocal_fields, 1,
         "Nonlocal(identifier* names)");
     if (!state->Nonlocal_type) return 0;
+    state->Immut_type = make_type(state, "Immut", state->stmt_type,
+                                  Immut_fields, 1,
+        "Immut(identifier* names)");
+    if (!state->Immut_type) return 0;
     state->Expr_type = make_type(state, "Expr", state->stmt_type, Expr_fields,
                                  1,
         "Expr(expr value)");
@@ -2628,6 +2637,23 @@ _PyAST_Nonlocal(asdl_identifier_seq * names, int lineno, int col_offset, int
         return NULL;
     p->kind = Nonlocal_kind;
     p->v.Nonlocal.names = names;
+    p->lineno = lineno;
+    p->col_offset = col_offset;
+    p->end_lineno = end_lineno;
+    p->end_col_offset = end_col_offset;
+    return p;
+}
+
+stmt_ty
+_PyAST_Immut(asdl_identifier_seq * names, int lineno, int col_offset, int
+             end_lineno, int end_col_offset, PyArena *arena)
+{
+    stmt_ty p;
+    p = (stmt_ty)_PyArena_Malloc(arena, sizeof(*p));
+    if (!p)
+        return NULL;
+    p->kind = Immut_kind;
+    p->v.Immut.names = names;
     p->lineno = lineno;
     p->col_offset = col_offset;
     p->end_lineno = end_lineno;
@@ -4440,6 +4466,17 @@ ast2obj_stmt(struct ast_state *state, struct validator *vstate, void* _o)
         result = PyType_GenericNew(tp, NULL, NULL);
         if (!result) goto failed;
         value = ast2obj_list(state, vstate, (asdl_seq*)o->v.Nonlocal.names,
+                             ast2obj_identifier);
+        if (!value) goto failed;
+        if (PyObject_SetAttr(result, state->names, value) == -1)
+            goto failed;
+        Py_DECREF(value);
+        break;
+    case Immut_kind:
+        tp = (PyTypeObject *)state->Immut_type;
+        result = PyType_GenericNew(tp, NULL, NULL);
+        if (!result) goto failed;
+        value = ast2obj_list(state, vstate, (asdl_seq*)o->v.Immut.names,
                              ast2obj_identifier);
         if (!value) goto failed;
         if (PyObject_SetAttr(result, state->names, value) == -1)
@@ -8646,6 +8683,57 @@ obj2ast_stmt(struct ast_state *state, PyObject* obj, stmt_ty* out, PyArena*
         if (*out == NULL) goto failed;
         return 0;
     }
+    tp = state->Immut_type;
+    isinstance = PyObject_IsInstance(obj, tp);
+    if (isinstance == -1) {
+        return 1;
+    }
+    if (isinstance) {
+        asdl_identifier_seq* names;
+
+        if (_PyObject_LookupAttr(obj, state->names, &tmp) < 0) {
+            return 1;
+        }
+        if (tmp == NULL) {
+            tmp = PyList_New(0);
+            if (tmp == NULL) {
+                return 1;
+            }
+        }
+        {
+            int res;
+            Py_ssize_t len;
+            Py_ssize_t i;
+            if (!PyList_Check(tmp)) {
+                PyErr_Format(PyExc_TypeError, "Immut field \"names\" must be a list, not a %.200s", _PyType_Name(Py_TYPE(tmp)));
+                goto failed;
+            }
+            len = PyList_GET_SIZE(tmp);
+            names = _Py_asdl_identifier_seq_new(len, arena);
+            if (names == NULL) goto failed;
+            for (i = 0; i < len; i++) {
+                identifier val;
+                PyObject *tmp2 = Py_NewRef(PyList_GET_ITEM(tmp, i));
+                if (_Py_EnterRecursiveCall(" while traversing 'Immut' node")) {
+                    goto failed;
+                }
+                res = obj2ast_identifier(state, tmp2, &val, arena);
+                _Py_LeaveRecursiveCall();
+                Py_DECREF(tmp2);
+                if (res != 0) goto failed;
+                if (len != PyList_GET_SIZE(tmp)) {
+                    PyErr_SetString(PyExc_RuntimeError, "Immut field \"names\" changed size during iteration");
+                    goto failed;
+                }
+                asdl_seq_SET(names, i, val);
+            }
+            Py_CLEAR(tmp);
+        }
+        *out = _PyAST_Immut(names, lineno, col_offset, end_lineno,
+                            end_col_offset, arena);
+        if (*out == NULL) goto failed;
+        return 0;
+    }
     tp = state->Expr_type;
     isinstance = PyObject_IsInstance(obj, tp);
     if (isinstance == -1) {
@@ -12828,6 +12916,9 @@ astmodule_exec(PyObject *m)
         return -1;
     }
     if (PyModule_AddObjectRef(m, "Nonlocal", state->Nonlocal_type) < 0) {
+        return -1;
+    }
+    if (PyModule_AddObjectRef(m, "Immut", state->Immut_type) < 0) {
         return -1;
     }
     if (PyModule_AddObjectRef(m, "Expr", state->Expr_type) < 0) {

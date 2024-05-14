@@ -3991,6 +3991,7 @@ compiler_visit_stmt(struct compiler *c, stmt_ty s)
         return compiler_from_import(c, s);
     case Global_kind:
     case Nonlocal_kind:
+    case Immut_kind:
         break;
     case Expr_kind:
     {

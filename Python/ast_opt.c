@@ -995,6 +995,7 @@ astfold_stmt(stmt_ty node_, PyArena *ctx_, _PyASTOptimizeState *state)
     case ImportFrom_kind:
     case Global_kind:
     case Nonlocal_kind:
+    case Immut_kind:
     case Pass_kind:
     case Break_kind:
     case Continue_kind:

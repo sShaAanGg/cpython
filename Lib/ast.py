@@ -967,6 +967,10 @@ class _Unparser(NodeVisitor):
         self.fill("nonlocal ")
         self.interleave(lambda: self.write(", "), self.write, node.names)
 
+    def visit_Immut(self, node):
+        self.fill("immut ")
+        self.interleave(lambda: self.write(", "), self.write, node.names)
+
     def visit_Await(self, node):
         with self.require_parens(_Precedence.AWAIT, node):
             self.write("await")

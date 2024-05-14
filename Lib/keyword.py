@@ -37,6 +37,7 @@ kwlist = [
     'from',
     'global',
     'if',
+    'immut',
     'import',
     'in',
     'is',
